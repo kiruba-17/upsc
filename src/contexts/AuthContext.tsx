@@ -36,50 +36,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
 
-  // Cache for profiles to avoid repeated fetches
-  const [profileCache, setProfileCache] = useState<Map<string, Profile>>(new Map());
+  const fetchUserProfile = async (userId: string): Promise<Profile | null> => {
+    try {
+      console.log('🔄 Fetching profile for user:', userId);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-  useEffect(() => {
-    let mounted = true;
-
-    const fetchUserProfile = async (userId: string): Promise<Profile | null> => {
-      // Check cache first
-      if (profileCache.has(userId)) {
-        console.log('✅ Using cached profile for user:', userId);
-        return profileCache.get(userId)!;
-      }
-
-      try {
-        console.log('🔄 Fetching profile for user:', userId);
-        
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
-
-        if (error) {
-          if (error.code === 'PGRST116') {
-            console.log('⚠️ Profile not found for user:', userId);
-          } else {
-            console.error('❌ Error fetching profile:', error);
-          }
-          return null;
-        }
-
-        console.log('✅ Profile fetched successfully:', data.role);
-        
-        // Cache the profile
-        setProfileCache(prev => new Map(prev).set(userId, data));
-        
-        return data;
-      } catch (error) {
+      if (error) {
         console.error('❌ Error fetching profile:', error);
         return null;
       }
-    };
+
+      console.log('✅ Profile fetched successfully:', data.role);
+      return data;
+    } catch (error) {
+      console.error('❌ Error fetching profile:', error);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
 
     const initializeAuth = async () => {
       try {
@@ -95,7 +77,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setProfile(null);
           setSession(null);
           setLoading(false);
-          setInitialized(true);
           return;
         }
 
@@ -124,7 +105,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } finally {
         if (mounted) {
           setLoading(false);
-          setInitialized(true);
         }
       }
     };
@@ -134,25 +114,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       console.log('🔄 Auth state change:', event, newSession?.user?.id || 'no user');
       
-      // Always update session and user immediately
       setSession(newSession);
       setUser(newSession?.user ?? null);
       
       if (newSession?.user) {
-        // Don't set loading for profile fetch on sign in - keep UI responsive
-        const userProfile = await fetchUserProfile(newSession.user.id);
-        if (mounted) {
-          setProfile(userProfile);
+        try {
+          const userProfile = await fetchUserProfile(newSession.user.id);
+          if (mounted) {
+            setProfile(userProfile);
+          }
+        } catch (error) {
+          console.error('❌ Error fetching profile in auth change:', error);
+          if (mounted) {
+            setProfile(null);
+          }
         }
       } else {
         setProfile(null);
       }
     };
 
-    // Set up auth state listener first
+    // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(handleAuthStateChange);
 
-    // Then initialize
+    // Initialize auth
     initializeAuth();
 
     return () => {
@@ -181,57 +166,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
       
       console.log('✅ Sign in successful for user:', data.user.id);
-      
-      // Immediately update state for faster UI response
-      setSession(data.session);
-      setUser(data.user);
-      
-      // Fetch profile in background
-      const userProfile = await fetchUserProfile(data.user.id);
-      setProfile(userProfile);
-      
       return { error: null };
       
     } catch (error) {
       console.error('❌ Unexpected sign in error:', error);
       return { error };
-    }
-  };
-
-  const fetchUserProfile = async (userId: string): Promise<Profile | null> => {
-    // Check cache first
-    if (profileCache.has(userId)) {
-      console.log('✅ Using cached profile for user:', userId);
-      return profileCache.get(userId)!;
-    }
-
-    try {
-      console.log('🔄 Fetching profile for user:', userId);
-      
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          console.log('⚠️ Profile not found for user:', userId);
-        } else {
-          console.error('❌ Error fetching profile:', error);
-        }
-        return null;
-      }
-
-      console.log('✅ Profile fetched successfully:', data.role);
-      
-      // Cache the profile
-      setProfileCache(prev => new Map(prev).set(userId, data));
-      
-      return data;
-    } catch (error) {
-      console.error('❌ Error fetching profile:', error);
-      return null;
     }
   };
 
@@ -266,13 +205,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
           return { error: profileError };
         }
         
-        // Cache the new profile
-        setProfileCache(prev => new Map(prev).set(data.user.id, {
-          ...profileData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }));
-        
         console.log('✅ Sign up successful');
       }
 
@@ -294,11 +226,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         console.log('✅ Sign out successful');
       }
       
-      // Clear state and cache immediately
+      // Clear state immediately
       setUser(null);
       setProfile(null);
       setSession(null);
-      setProfileCache(new Map());
       
     } catch (error) {
       console.error('❌ Sign out error:', error);

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Eye, EyeOff, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -10,7 +10,6 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { signIn, user, profile } = useAuth();
-  const navigate = useNavigate();
 
   // Redirect if already logged in
   if (user && profile) {
@@ -25,33 +24,22 @@ export function Login() {
       return;
     }
 
-    if (loading) {
-      return;
-    }
-
     setLoading(true);
 
     try {
-      console.log('🔄 Submitting login form...');
       const { error } = await signIn(email.trim(), password);
       
       if (error) {
         console.error('Login error:', error);
         toast.error(error.message || 'Invalid email or password');
-        setLoading(false);
       } else {
-        console.log('✅ Login successful, navigating...');
         toast.success('Welcome back!');
-        
-        // Small delay to ensure auth state is updated
-        setTimeout(() => {
-          // Navigate based on role - will be determined by auth context
-          window.location.href = '/dashboard';
-        }, 100);
+        // The auth context will handle the redirect automatically
       }
     } catch (error) {
       console.error('Unexpected login error:', error);
       toast.error('An unexpected error occurred');
+    } finally {
       setLoading(false);
     }
   };
