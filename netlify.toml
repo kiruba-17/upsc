@@ -9,3 +9,8 @@
 
 [build.environment]
   NODE_VERSION = "18"
+
+# Environment variables for Netlify deployment
+# Note: These should be set in Netlify's dashboard under Site settings > Environment variables
+# VITE_SUPABASE_URL = "your-supabase-url"
+# VITE_SUPABASE_ANON_KEY = "your-supabase-anon-key"

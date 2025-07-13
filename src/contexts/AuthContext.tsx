@@ -10,11 +10,13 @@ interface AuthContextType {
   profile: Profile | null;
   session: Session | null;
   loading: boolean;
+  error: string | null;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, fullName: string, role: 'admin' | 'student') => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
   isStudent: boolean;
+  retry: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,6 +38,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const checkEnvironmentVariables = () => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('❌ Missing Supabase environment variables');
+      setError('Configuration Error: Supabase environment variables are missing. Please check your deployment configuration.');
+      setLoading(false);
+      return false;
+    }
+    
+    if (supabaseUrl.includes('undefined') || supabaseAnonKey.includes('undefined')) {
+      console.error('❌ Invalid Supabase environment variables');
+      setError('Configuration Error: Supabase environment variables are invalid. Please check your deployment configuration.');
+      setLoading(false);
+      return false;
+    }
+    
+    return true;
+  };
 
   const fetchUserProfile = async (userId: string): Promise<Profile | null> => {
     try {
@@ -49,6 +74,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (error) {
         console.error('❌ Error fetching profile:', error);
+        if (error.message.includes('Failed to fetch') || error.message.includes('network')) {
+          setError('Network Error: Unable to connect to the database. Please check your internet connection and try again.');
+        }
         return null;
       }
 
@@ -56,23 +84,52 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return data;
     } catch (error) {
       console.error('❌ Error fetching profile:', error);
+      setError('Network Error: Unable to fetch user profile. Please try again.');
       return null;
     }
   };
 
+  const retry = () => {
+    setError(null);
+    setRetryCount(prev => prev + 1);
+  };
+
   useEffect(() => {
     let mounted = true;
+    let timeoutId: NodeJS.Timeout;
 
     const initializeAuth = async () => {
       try {
         console.log('🔄 Initializing auth...');
+        setError(null);
+        
+        // Check environment variables first
+        if (!checkEnvironmentVariables()) {
+          return;
+        }
+
+        // Set a timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+          if (mounted && loading) {
+            console.log('⏰ Auth initialization timeout');
+            setError('Connection Timeout: Unable to connect to authentication service. Please try again.');
+            setLoading(false);
+          }
+        }, 10000); // 10 second timeout
         
         const { data: { session: currentSession }, error } = await supabase.auth.getSession();
         
         if (!mounted) return;
         
+        clearTimeout(timeoutId);
+        
         if (error) {
           console.error('❌ Error getting session:', error);
+          if (error.message.includes('Failed to fetch') || error.message.includes('network')) {
+            setError('Network Error: Unable to connect to authentication service. Please check your internet connection and try again.');
+          } else {
+            setError(`Authentication Error: ${error.message}`);
+          }
           setUser(null);
           setProfile(null);
           setSession(null);
@@ -98,6 +155,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (error) {
         console.error('❌ Error initializing auth:', error);
         if (mounted) {
+          if (error instanceof Error && (error.message.includes('Failed to fetch') || error.message.includes('network'))) {
+            setError('Network Error: Unable to connect to authentication service. Please check your internet connection and try again.');
+          } else {
+            setError('Authentication Error: An unexpected error occurred. Please try again.');
+          }
           setUser(null);
           setProfile(null);
           setSession(null);
@@ -105,6 +167,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } finally {
         if (mounted) {
           setLoading(false);
+        }
+        if (timeoutId) {
+          clearTimeout(timeoutId);
         }
       }
     };
@@ -116,6 +181,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       setSession(newSession);
       setUser(newSession?.user ?? null);
+      setError(null);
       
       if (newSession?.user) {
         try {
@@ -142,13 +208,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     return () => {
       mounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       subscription.unsubscribe();
     };
-  }, []);
+  }, [retryCount]); // Re-run when retry is called
 
   const signIn = async (email: string, password: string) => {
     try {
       console.log('🔄 Starting sign in process...');
+      setError(null);
+      
+      // Check environment variables
+      if (!checkEnvironmentVariables()) {
+        return { error: new Error('Configuration error: Missing environment variables') };
+      }
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -157,6 +232,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       if (error) {
         console.error('❌ Sign in error:', error);
+        if (error.message.includes('Failed to fetch') || error.message.includes('network')) {
+          setError('Network Error: Unable to connect to authentication service. Please check your internet connection and try again.');
+        }
         return { error };
       }
       
@@ -170,6 +248,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
     } catch (error) {
       console.error('❌ Unexpected sign in error:', error);
+      if (error instanceof Error && (error.message.includes('Failed to fetch') || error.message.includes('network'))) {
+        setError('Network Error: Unable to connect to authentication service. Please check your internet connection and try again.');
+      }
       return { error };
     }
   };
@@ -177,6 +258,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signUp = async (email: string, password: string, fullName: string, role: 'admin' | 'student') => {
     try {
       console.log('🔄 Starting sign up process...');
+      setError(null);
+      
+      // Check environment variables
+      if (!checkEnvironmentVariables()) {
+        return { error: new Error('Configuration error: Missing environment variables') };
+      }
       
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
@@ -184,6 +271,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
 
       if (error) {
+        if (error.message.includes('Failed to fetch') || error.message.includes('network')) {
+          setError('Network Error: Unable to connect to authentication service. Please check your internet connection and try again.');
+        }
         return { error };
       }
 
@@ -211,6 +301,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return { error: null };
     } catch (error) {
       console.error('❌ Sign up error:', error);
+      if (error instanceof Error && (error.message.includes('Failed to fetch') || error.message.includes('network'))) {
+        setError('Network Error: Unable to connect to authentication service. Please check your internet connection and try again.');
+      }
       return { error };
     }
   };
@@ -218,6 +311,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signOut = async () => {
     try {
       console.log('🔄 Starting sign out process...');
+      setError(null);
       
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -244,11 +338,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     profile,
     session,
     loading,
+    error,
     signIn,
     signUp,
     signOut,
     isAdmin,
     isStudent,
+    retry,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

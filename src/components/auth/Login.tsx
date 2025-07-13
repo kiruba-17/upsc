@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Eye, EyeOff, BookOpen } from 'lucide-react';
+import { Eye, EyeOff, BookOpen, AlertCircle, RefreshCw, Wifi } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function Login() {
@@ -9,11 +9,65 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { signIn, user, profile } = useAuth();
+  const { signIn, user, profile, error, retry } = useAuth();
 
   // Redirect if already logged in
   if (user && profile) {
     return <Navigate to={profile.role === 'admin' ? '/admin' : '/dashboard'} replace />;
+  }
+
+  // Show error state if there's a configuration or network error
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center">
+            <div className="flex justify-center">
+              <div className="bg-red-100 rounded-full w-16 h-16 flex items-center justify-center">
+                {error.includes('Network') ? (
+                  <Wifi className="h-8 w-8 text-red-600" />
+                ) : (
+                  <AlertCircle className="h-8 w-8 text-red-600" />
+                )}
+              </div>
+            </div>
+            <h2 className="mt-6 text-3xl font-bold text-gray-900">Connection Error</h2>
+            <p className="mt-2 text-sm text-gray-600">{error}</p>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={retry}
+              className="w-full flex items-center justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Try Again
+            </button>
+            
+            {error.includes('Configuration') && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <div className="flex">
+                  <AlertCircle className="h-5 w-5 text-yellow-400" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-yellow-800">
+                      Configuration Issue
+                    </h3>
+                    <div className="mt-2 text-sm text-yellow-700">
+                      <p>The application is not properly configured. Please ensure:</p>
+                      <ul className="list-disc list-inside mt-1">
+                        <li>Supabase environment variables are set</li>
+                        <li>The Supabase project is active</li>
+                        <li>Network connectivity is available</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -31,7 +85,13 @@ export function Login() {
       
       if (error) {
         console.error('Login error:', error);
-        toast.error(error.message || 'Invalid email or password');
+        if (error.message.includes('Invalid login credentials')) {
+          toast.error('Invalid email or password');
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('network')) {
+          toast.error('Network error: Please check your connection and try again');
+        } else {
+          toast.error(error.message || 'Login failed');
+        }
       } else {
         toast.success('Welcome back!');
         // The auth context will handle the redirect automatically
