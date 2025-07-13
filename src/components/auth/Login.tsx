@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Eye, EyeOff, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -10,6 +10,7 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { signIn, user, profile } = useAuth();
+  const navigate = useNavigate();
 
   // Redirect if already logged in
   if (user && profile) {
@@ -24,11 +25,11 @@ export function Login() {
       return;
     }
 
-    // Prevent multiple submissions
     if (loading) {
-      console.log('⚠️ Login already in progress, ignoring submission');
       return;
     }
+
+    setLoading(true);
 
     try {
       console.log('🔄 Submitting login form...');
@@ -37,16 +38,23 @@ export function Login() {
       if (error) {
         console.error('Login error:', error);
         toast.error(error.message || 'Invalid email or password');
+        setLoading(false);
       } else {
-        console.log('✅ Login form submission successful');
-        // Don't show success toast here - let the redirect happen naturally
+        console.log('✅ Login successful, navigating...');
+        toast.success('Welcome back!');
+        
+        // Small delay to ensure auth state is updated
+        setTimeout(() => {
+          // Navigate based on role - will be determined by auth context
+          window.location.href = '/dashboard';
+        }, 100);
       }
     } catch (error) {
       console.error('Unexpected login error:', error);
       toast.error('An unexpected error occurred');
+      setLoading(false);
     }
   };
-    
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -81,6 +89,7 @@ export function Login() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter your email"
+                disabled={loading}
               />
             </div>
 
@@ -99,11 +108,13 @@ export function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 pr-10"
                   placeholder="Enter your password"
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-gray-400" />

@@ -11,21 +11,13 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, requireAdmin = false, requireStudent = false }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
 
-  console.log('🔍 ProtectedRoute check:', { 
-    hasUser: !!user, 
-    hasProfile: !!profile, 
-    loading, 
-    userRole: profile?.role 
-  });
-
-  // Show loading spinner while auth is being determined
+  // Show loading spinner only during initial auth check
   if (loading) {
-    console.log('⏳ ProtectedRoute: Still loading auth state');
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p className="text-sm text-gray-600">Loading...</p>
         </div>
       </div>
     );
@@ -33,24 +25,16 @@ export function ProtectedRoute({ children, requireAdmin = false, requireStudent 
 
   // Redirect to login if no user
   if (!user) {
-    console.log('🚫 ProtectedRoute: No user, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 
-  // If user exists but no profile, show error
+  // If user exists but no profile, show minimal loading (profile might still be fetching)
   if (!profile) {
-    console.log('🚫 ProtectedRoute: User exists but no profile found');
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Profile Not Found</h2>
-          <p className="text-gray-600 mb-4">Your user profile could not be loaded.</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Retry
-          </button>
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p className="text-xs text-gray-500">Setting up your profile...</p>
         </div>
       </div>
     );
@@ -58,15 +42,12 @@ export function ProtectedRoute({ children, requireAdmin = false, requireStudent 
 
   // Check role-based access
   if (requireAdmin && profile.role !== 'admin') {
-    console.log('🚫 ProtectedRoute: Admin required but user is not admin');
     return <Navigate to="/dashboard" replace />;
   }
 
   if (requireStudent && profile.role !== 'student') {
-    console.log('🚫 ProtectedRoute: Student required but user is not student');
     return <Navigate to="/admin" replace />;
   }
 
-  console.log('✅ ProtectedRoute: Access granted');
   return <>{children}</>;
 }
