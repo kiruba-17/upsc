@@ -12,5 +12,5 @@
 
 # Environment variables for Netlify deployment
 # Note: These should be set in Netlify's dashboard under Site settings > Environment variables
-# VITE_SUPABASE_URL = "your-supabase-url"
-# VITE_SUPABASE_ANON_KEY = "your-supabase-anon-key"
+# VITE_SUPABASE_URL = "https://btzpyspkqqqrxrrptnbb.supabase.com"
+# VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0enB5c3BrcXFxcnhycnB0bmJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzNzA4MjMsImV4cCI6MjA2Nzk0NjgyM30.d-wJ0TJTWCeafmX_ttPn2PFK_XQS5AAQ4V9l4J2Mo5E"
