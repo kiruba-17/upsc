@@ -31,10 +31,29 @@ export function ProtectedRoute({ children, requireAdmin = false, requireStudent 
     );
   }
 
-  // Redirect to login if no user or profile
-  if (!user || !profile) {
-    console.log('🚫 ProtectedRoute: No user or profile, redirecting to login');
+  // Redirect to login if no user
+  if (!user) {
+    console.log('🚫 ProtectedRoute: No user, redirecting to login');
     return <Navigate to="/login" replace />;
+  }
+
+  // If user exists but no profile, show error
+  if (!profile) {
+    console.log('🚫 ProtectedRoute: User exists but no profile found');
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Profile Not Found</h2>
+          <p className="text-gray-600 mb-4">Your user profile could not be loaded.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Check role-based access

@@ -36,23 +36,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    let profileFetchController: AbortController | null = null;
 
-    // Initialize auth state
     const initializeAuth = async () => {
       try {
         console.log('🔄 Initializing auth...');
         
+        // Get initial session
         const { data: { session: currentSession }, error } = await supabase.auth.getSession();
         
         if (!mounted) return;
         
         if (error) {
           console.error('❌ Error getting session:', error);
-          resetAuthState();
+          if (mounted) {
+            setUser(null);
+            setProfile(null);
+            setSession(null);
+            setLoading(false);
+            setInitialized(true);
+          }
           return;
         }
 
@@ -61,30 +67,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setSession(currentSession);
           setUser(currentSession.user);
           
-          // Fetch profile for existing session
+          // Fetch profile
           await fetchUserProfile(currentSession.user.id);
         } else {
           console.log('ℹ️ No existing session found');
-          resetAuthState();
+          if (mounted) {
+            setUser(null);
+            setProfile(null);
+            setSession(null);
+            setLoading(false);
+            setInitialized(true);
+          }
         }
       } catch (error) {
         console.error('❌ Error initializing auth:', error);
         if (mounted) {
-          resetAuthState();
+          setUser(null);
+          setProfile(null);
+          setSession(null);
+          setLoading(false);
+          setInitialized(true);
         }
       }
     };
 
-    // Fetch user profile
     const fetchUserProfile = async (userId: string) => {
       if (!mounted) return;
-      
-      // Cancel any existing profile fetch
-      if (profileFetchController) {
-        profileFetchController.abort();
-      }
-      
-      profileFetchController = new AbortController();
       
       try {
         console.log('🔄 Fetching profile for user:', userId);
@@ -93,10 +101,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
           .from('profiles')
           .select('*')
           .eq('id', userId)
-          .single()
-          .abortSignal(profileFetchController.signal);
+          .single();
 
-        if (!mounted || profileFetchController.signal.aborted) return;
+        if (!mounted) return;
 
         if (error) {
           if (error.code === 'PGRST116') {
@@ -109,11 +116,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           console.log('✅ Profile fetched successfully:', data.role);
           setProfile(data);
         }
-      } catch (error: any) {
-        if (error.name === 'AbortError') {
-          console.log('🚫 Profile fetch aborted');
-          return;
-        }
+      } catch (error) {
         console.error('❌ Error fetching profile:', error);
         if (mounted) {
           setProfile(null);
@@ -121,52 +124,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } finally {
         if (mounted) {
           setLoading(false);
+          setInitialized(true);
         }
       }
     };
 
-    // Reset auth state
-    const resetAuthState = () => {
-      if (!mounted) return;
-      setUser(null);
-      setProfile(null);
-      setSession(null);
-      setLoading(false);
-    };
-
-    // Handle auth state changes
     const handleAuthStateChange = async (event: string, newSession: Session | null) => {
       if (!mounted) return;
       
       console.log('🔄 Auth state change:', event, newSession?.user?.id || 'no user');
       
-      // Cancel any ongoing profile fetch
-      if (profileFetchController) {
-        profileFetchController.abort();
+      // Don't process auth changes until we've initialized
+      if (!initialized && event !== 'INITIAL_SESSION') {
+        return;
       }
       
       setSession(newSession);
       setUser(newSession?.user ?? null);
       
       if (newSession?.user) {
+        setLoading(true);
         await fetchUserProfile(newSession.user.id);
       } else {
-        resetAuthState();
+        setProfile(null);
+        setLoading(false);
       }
     };
 
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(handleAuthStateChange);
 
-    // Initialize
+    // Initialize auth
     initializeAuth();
 
-    // Cleanup
     return () => {
       mounted = false;
-      if (profileFetchController) {
-        profileFetchController.abort();
-      }
       subscription.unsubscribe();
     };
   }, []);
@@ -252,17 +244,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.log('🔄 Starting sign out process...');
       setLoading(true);
       
-      // Clear local state immediately
-      setUser(null);
-      setProfile(null);
-      setSession(null);
-      
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('❌ Sign out error:', error);
       } else {
         console.log('✅ Sign out successful');
       }
+      
+      // Clear state immediately
+      setUser(null);
+      setProfile(null);
+      setSession(null);
       
     } catch (error) {
       console.error('❌ Sign out error:', error);
